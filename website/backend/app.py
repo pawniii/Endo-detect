@@ -1,36 +1,36 @@
+import os
+import logging
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import numpy as np
 import joblib
-import os
-import logging
-
-app = Flask(__name__)
-CORS(app)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
+# Directory configuration
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))       # .../website/backend
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)                    # .../website
+FRONTEND_DIR = os.path.join(PROJECT_ROOT, 'frontend')          # .../website/frontend
+MODEL_PATH   = os.path.join(PROJECT_ROOT, 'ML-Model', 'model', 'trained_model.pkl')
+
+# Initialize Flask app
+app = Flask(__name__)
+CORS(app)
+
 # Load model on startup
 def load_model():
-    try:
-        # Hardcoded path to the model file
-        model_path = "ML-Model/model/trained_model.pkl"  # Update this path if necessary
+    if not os.path.exists(MODEL_PATH):
+        logging.error("Model file not found at %s", MODEL_PATH)
+        raise FileNotFoundError(f"Model file not found at: {MODEL_PATH}")
+    logging.info("Loading model from %s", MODEL_PATH)
+    model = joblib.load(MODEL_PATH)
+    logging.info("Model loaded successfully.")
+    return model
 
-        # Check if the model file exists
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file not found at: {model_path}")
-        
-        # Load the model
-        model = joblib.load(model_path)
-        logging.info("Model loaded successfully.")
-        return model
-    except Exception as e:
-        logging.error(f"Model loading error: {e}")
-        raise
+model = load_model()
 
-model = load_model()  # Load the model when the app starts
-
+# Define features
 FEATURES = [
     'Irregular / Missed periods', 'Cramping', 'Menstrual clots', 'Infertility',
     'Pain / Chronic pain', 'Diarrhea', 'Long menstruation', 'Vomiting / constant vomiting',
@@ -45,49 +45,32 @@ FEATURES = [
 @app.route('/api/predict', methods=['POST'])
 def predict():
     try:
-        # Get the input data from the request
-        data = request.get_json()
+        data = request.get_json(force=True)
         input_data = [int(data.get(feature, 0)) for feature in FEATURES]
-        input_array = np.array(input_data).reshape(1, -1)  # Reshape for prediction
+        input_array = np.array(input_data).reshape(1, -1)
 
-        # Get the prediction and confidence
         prediction = model.predict(input_array)[0]
         proba = model.predict_proba(input_array)[0][prediction]
 
-        # Return the result as JSON
         return jsonify({
             'prediction': int(prediction),
             'confidence': float(proba),
             'diagnosis': 'Endometriosis' if prediction == 1 else 'No Endometriosis'
         })
     except Exception as e:
+        logging.error("Prediction error: %s", e)
         return jsonify({'error': str(e)}), 400
 
-# Serve homepage
 @app.route('/')
 def serve_home():
-    try:
-        # Get the directory paths for frontend
-        frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend')
-        
-        # Return the homepage HTML file
-        return send_from_directory(frontend_dir, 'website-home.html')
-    except Exception as e:
-        return f"Error loading homepage: {e}"
+    # Debug: log directory contents
+    logging.info("Frontend dir contents: %s", os.listdir(FRONTEND_DIR))
+    return send_from_directory(FRONTEND_DIR, 'home.html')
 
-# Serve static files (CSS, JS, images)
 @app.route('/<path:filename>')
 def serve_static(filename):
-    try:
-        # Get the path for static files
-        frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend')
-        
-        # Return the requested static file
-        return send_from_directory(frontend_dir, filename)
-    except Exception as e:
-        return f"Error loading file: {e}"
+    return send_from_directory(FRONTEND_DIR, filename)
 
-# Start the Flask application
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))  # PORT environment variable used by Render
-    app.run(host='0.0.0.0', port=port)  
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)

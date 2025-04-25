@@ -1,12 +1,10 @@
 document.getElementById('submit-btn').addEventListener('click', async (e) => {
     e.preventDefault();
     
-    // Use deployed API endpoint on Render
     const API_ENDPOINTS = [
         'https://endo-detect.onrender.com/api/predict'
     ];
 
-    // Collect symptom data with consistent naming
     const symptoms = {
         "Irregular / Missed periods": getRadioValue('irregular_missed_periods'),
         "Cramping": getRadioValue('cramping'),
@@ -49,7 +47,6 @@ document.getElementById('submit-btn').addEventListener('click', async (e) => {
         
         console.log("Sending symptoms:", symptoms);
 
-        // Try each API endpoint until one works
         let lastError = null;
         for (const endpoint of API_ENDPOINTS) {
             try {

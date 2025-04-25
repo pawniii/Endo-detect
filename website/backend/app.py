@@ -3,27 +3,31 @@ from flask_cors import CORS
 import numpy as np
 import joblib
 import os
+import logging
 
 app = Flask(__name__)
 CORS(app)
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 # Load model on startup
 def load_model():
     try:
-        # Get the directory paths
-        backend_dir = os.path.dirname(os.path.abspath(__file__))  # Backend folder
-        project_root = os.path.dirname(backend_dir)  # Root of the project
-        model_path = os.path.join(project_root, 'ML-Model', 'model', 'trained_model.pkl')
+        # Hardcoded path to the model file
+        model_path = "ML-Model/model/trained_model.pkl"  # Update this path if necessary
 
         # Check if the model file exists
         if not os.path.exists(model_path):
-            raise FileNotFoundError("Model file not found.")
+            raise FileNotFoundError(f"Model file not found at: {model_path}")
         
         # Load the model
         model = joblib.load(model_path)
+        logging.info("Model loaded successfully.")
         return model
     except Exception as e:
-        raise Exception(f"Model loading error: {e}")
+        logging.error(f"Model loading error: {e}")
+        raise
 
 model = load_model()  # Load the model when the app starts
 
@@ -64,9 +68,7 @@ def predict():
 def serve_home():
     try:
         # Get the directory paths for frontend
-        backend_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(backend_dir)
-        frontend_dir = os.path.join(project_root, 'frontend')
+        frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend')
         
         # Return the homepage HTML file
         return send_from_directory(frontend_dir, 'website-home.html')
@@ -78,9 +80,7 @@ def serve_home():
 def serve_static(filename):
     try:
         # Get the path for static files
-        backend_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(backend_dir)
-        frontend_dir = os.path.join(project_root, 'frontend')
+        frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend')
         
         # Return the requested static file
         return send_from_directory(frontend_dir, filename)
@@ -90,4 +90,4 @@ def serve_static(filename):
 # Start the Flask application
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))  # PORT environment variable used by Render
-    app.run(host='0.0.0.0', port=port)  # Run the app on all interfaces (useful for deployment)
+    app.run(host='0.0.0.0', port=port)  

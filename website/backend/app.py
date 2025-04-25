@@ -71,8 +71,11 @@ def serve_home():
         # Get the directory paths for frontend
         frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend')
         
+        # Log the contents of the frontend directory
+        logging.info(f"Contents of frontend directory: {os.listdir(frontend_dir)}")
+        
         # Return the homepage HTML file
-        return send_from_directory(frontend_dir, 'home.html')  # Use the correct filename
+        return send_from_directory(frontend_dir, 'home.html')  # Ensure this matches the actual filename
     except Exception as e:
         return f"Error loading homepage: {e}"
 

@@ -1,137 +1,90 @@
-document.getElementById('submit-btn').addEventListener('click', async (e) => {
-    e.preventDefault();
-    
-    // API Configuration - try multiple endpoints
-    const API_ENDPOINTS = [
-        'http://localhost:5000/api/predict',
-        'http://127.0.0.1:5000/api/predict',
-        'http://192.168.29.37:5000/api/predict' // From your Flask output
-    ];
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+import numpy as np
+import joblib
+import os
+import logging
+import xgboost as xgb
 
-    // Collect symptom data with consistent naming
-    const symptoms = {
-        "Irregular / Missed periods": getRadioValue('irregular_missed_periods'),
-        "Cramping": getRadioValue('cramping'),
-        "Menstrual clots": getRadioValue('menstrual_clots'),
-        "Infertility": getRadioValue('infertility'),
-        "Pain / Chronic pain": getRadioValue('pain_chronic_pain'),
-        "Diarrhea": getRadioValue('diarrhea'),
-        "Long menstruation": getRadioValue('long_menstruation'),
-        "Vomiting / constant vomiting": getRadioValue('vomiting_constant_vomiting'),
-        "Migraines": getRadioValue('migraines'),
-        "Extreme Bloating": getRadioValue('extreme_bloating'),
-        "Leg pain": getRadioValue('leg_pain'),
-        "Depression": getRadioValue('depression'),
-        "Fertility Issues": getRadioValue('fertility_issues'),
-        "Ovarian cysts": getRadioValue('ovarian_cysts'),
-        "Painful urination": getRadioValue('painful_urination'),
-        "Pain after Intercourse": getRadioValue('pain_after_intercourse'),
-        "Digestive / GI problems": getRadioValue('digestive_gi_problems'),
-        "Anaemia / Iron deficiency": getRadioValue('anaemia_iron_deficiency'),
-        "Hip pain": getRadioValue('hip_pain'),
-        "Vaginal Pain/Pressure": getRadioValue('vaginal_pain_pressure'),
-        "Cysts (unspecified)": getRadioValue('cysts'),
-        "Abnormal uterine bleeding": getRadioValue('abnormal_uterine_bleeding'),
-        "Hormonal problems": getRadioValue('hormonal_problems'),
-        "Feeling sick": getRadioValue('feeling_sick'),
-        "Abdominal Cramps during Intercourse": getRadioValue('abdominal_cramps_during_intercourse'),
-        "Insomnia / Sleeplessness": getRadioValue('insomnia_sleeplessness'),
-        "Loss of appetite": getRadioValue('loss_of_appetite')
-    };
-    
-    function getRadioValue(name) {
-        const selected = document.querySelector(`input[name="${name}"]:checked`);
-        return selected ? selected.value : '0';
-    }
+app = Flask(__name__)
+CORS(app)  # This will allow all origins; you can specify origins if needed
 
-    try {
-        const submitBtn = document.getElementById('submit-btn');
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Analyzing...';
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+# Load model on startup
+def load_model():
+    try:
+        model_path = "ML-Model/model/trained_model.pkl"  # Ensure this path is correct
+
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found at: {model_path}")
         
-        console.log("Sending symptoms:", symptoms);
+        model = joblib.load(model_path)
+        logging.info("Model loaded successfully.")
+        return model
+    except Exception as e:
+        logging.error(f"Model loading error: {e}")
+        raise
 
-        // Try each API endpoint until one works
-        let lastError = null;
-        for (const endpoint of API_ENDPOINTS) {
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(symptoms),
-                    signal: AbortSignal.timeout(5000) // 5 second timeout
-                });
+model = load_model()  # Load the model when the app starts
 
-                if (!response.ok) {
-                    const error = await response.json().catch(() => ({}));
-                    throw new Error(error.message || `HTTP error ${response.status}`);
-                }
+FEATURES = [
+    'Irregular / Missed periods', 'Cramping', 'Menstrual clots', 'Infertility',
+    'Pain / Chronic pain', 'Diarrhea', 'Long menstruation', 'Vomiting / constant vomiting',
+    'Migraines', 'Extreme Bloating', 'Leg pain', 'Depression', 'Fertility Issues',
+    'Ovarian cysts', 'Painful urination', 'Pain after Intercourse',
+    'Digestive / GI problems', 'Anaemia / Iron deficiency', 'Hip pain',
+    'Vaginal Pain/Pressure', 'Cysts (unspecified)', 'Abnormal uterine bleeding',
+    'Hormonal problems', 'Feeling sick', 'Abdominal Cramps during Intercourse',
+    'Insomnia / Sleeplessness', 'Loss of appetite'
+]
 
-                const data = await response.json();
-                displayResult(data);
-                return; // Success - exit the function
-                
-            } catch (error) {
-                console.error(`Failed with ${endpoint}:`, error);
-                lastError = error;
-                continue; // Try next endpoint
-            }
-        }
+@app.route('/api/predict', methods=['POST'])
+def predict():
+    try:
+        data = request.get_json()
+        input_data = [int(data.get(feature, 0)) for feature in FEATURES]
+        input_array = np.array(input_data).reshape(1, -1)  # Reshape for prediction
 
-        throw lastError || new Error('All API connection attempts failed');
+        prediction = model.predict(input_array)[0]
+        proba = model.predict_proba(input_array)[0][prediction]
 
-    } catch (error) {
-        console.error('Final error:', error);
-        showError(error.message || 'Failed to get diagnosis');
-    } finally {
-        const submitBtn = document.getElementById('submit-btn');
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Check Diagnosis';
-    }
-});
+        return jsonify({
+            'prediction': int(prediction),
+            'confidence': float(proba),
+            'diagnosis': 'Endometriosis' if prediction == 1 else 'No Endometriosis'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
-function displayResult(data) {
-    const resultContainer = document.getElementById('result-container');
-    const resultContent = document.getElementById('result-content');
-    
-    const diagnosis = data.prediction == 1 ? 
-        'Endometriosis Detected' : 'No Endometriosis Detected';
-    
-    resultContent.innerHTML = `
-        <p class="diagnosis-${data.prediction == 1 ? 'positive' : 'negative'}">
-            Diagnosis: ${diagnosis}
-        </p>
-        <p class="confidence">Confidence: ${(data.confidence * 100).toFixed(1)}%</p>
-        <div class="symptoms-list">
-            <p>Based on:</p>
-            <ul>
-                ${Object.entries(data.features_used || {})
-                  .filter(([_, val]) => val == 1)
-                  .map(([key]) => `<li>${key}</li>`)
-                  .join('')}
-            </ul>
-        </div>
-        <p class="note">Note: This is a predictive tool, not a medical diagnosis.</p>
-    `;
-    
-    resultContainer.classList.remove('hidden');
-    resultContainer.scrollIntoView({ behavior: 'smooth' });
-}
+# Serve homepage
+@app.route('/')
+def serve_home():
+    try:
+        frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../frontend')
 
-function showError(message) {
-    const resultContent = document.getElementById('result-content');
-    resultContent.innerHTML = `
-        <p class="error-message">Error: ${message}</p>
-        <div class="troubleshooting">
-            <p>Please:</p>
-            <ol>
-                <li>Ensure backend is running (http://localhost:5000)</li>
-                <li>Check console for details (F12 > Console)</li>
-                <li>Try different symptoms</li>
-            </ol>
-        </div>
-    `;
-    document.getElementById('result-container').classList.remove('hidden');
-}
+        if os.path.exists(frontend_dir):
+            logging.info(f"Contents of frontend directory: {os.listdir(frontend_dir)}")
+        else:
+            logging.error(f"Frontend directory does not exist: {frontend_dir}")
+            return "Error: Frontend directory does not exist.", 500
+        
+        return send_from_directory(frontend_dir, 'home.html')
+    except Exception as e:
+        return f"Error loading homepage: {e}", 500
+
+# Serve static files (CSS, JS, images)
+@app.route('/<path:filename>')
+def serve_static(filename):
+    try:
+        frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../frontend')
+        
+        return send_from_directory(frontend_dir, filename)
+    except Exception as e:
+        return f"Error loading file: {e}", 500
+
+# Start the Flask application
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))  # PORT environment variable used by Render
+    app.run(host='0.0.0.0', port=port)
